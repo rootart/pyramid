@@ -2,11 +2,13 @@ import transaction
 import unittest
 import webtest
 
-
 class FunctionalTests(unittest.TestCase):
 
     basic_login = (
         '/login?login=basic&password=basic'
+        '&next=FrontPage&form.submitted=Login')
+    basic_login_no_users_pass = (
+        '/login?login=basic_2&password=basic'
         '&next=FrontPage&form.submitted=Login')
     basic_wrong_login = (
         '/login?login=basic&password=incorrect'
@@ -41,12 +43,13 @@ class FunctionalTests(unittest.TestCase):
             editor = User(name='editor', role='editor')
             editor.set_password('editor')
             basic = User(name='basic', role='basic')
+            basic_2 = User(name='basic_2', role='basic')
             basic.set_password('basic')
             page1 = Page(name='FrontPage', data='This is the front page')
             page1.creator = editor
             page2 = Page(name='BackPage', data='This is the back page')
             page2.creator = basic
-            dbsession.add_all([basic, editor, page1, page2])
+            dbsession.add_all([basic, basic_2, editor, page1, page2])
 
     @classmethod
     def tearDownClass(cls):
@@ -68,8 +71,19 @@ class FunctionalTests(unittest.TestCase):
         res = self.testapp.get(self.basic_login, status=302)
         self.assertEqual(res.location, 'http://localhost/FrontPage')
 
+    def test_successful_log_in_without_next_url(self):
+        login_path = (
+            '/login?login=basic&password=basic'
+            '&form.submitted=Login')
+        res = self.testapp.get(login_path, status=302)
+        self.assertEqual(res.location, 'http://localhost/')
+
     def test_failed_log_in(self):
         res = self.testapp.get(self.basic_wrong_login, status=200)
+        self.assertTrue(b'login' in res.body)
+
+    def test_failed_log_in_with_null_password_hash(self):
+        res = self.testapp.get(self.basic_login_no_users_pass, status=200)
         self.assertTrue(b'login' in res.body)
 
     def test_logout_link_present_when_logged_in(self):
@@ -95,6 +109,11 @@ class FunctionalTests(unittest.TestCase):
         self.testapp.get(self.basic_login, status=302)
         res = self.testapp.get('/FrontPage/edit_page', status=302).follow()
         self.assertTrue(b'Login' in res.body)
+
+    def test_basic_user_adds_page_with_existing_name(self):
+        self.testapp.get(self.basic_login, status=302)
+        res = self.testapp.get('/add_page/FrontPage', status=302)
+        self.assertTrue('/FrontPage/edit_page' in res.location)
 
     def test_basic_user_can_edit_back(self):
         self.testapp.get(self.basic_login, status=302)

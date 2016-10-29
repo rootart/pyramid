@@ -12,10 +12,12 @@ class BaseTest(unittest.TestCase):
     def setUp(self):
         from ..models import get_tm_session
         self.config = testing.setUp(settings={
-            'sqlalchemy.url': 'sqlite:///:memory:'
+            'sqlalchemy.url': 'sqlite:///:memory:',
+            'auth.secret': 'foo',
         })
         self.config.include('..models')
         self.config.include('..routes')
+        # self.config.include('..security')
 
         session_factory = self.config.registry['dbsession_factory']
         self.session = get_tm_session(session_factory, transaction.manager)
@@ -96,6 +98,7 @@ class ViewPageTests(BaseTest):
 class AddPageTests(BaseTest):
     def _callFUT(self, request):
         from tutorial.views.default import add_page
+
         return add_page(request)
 
     def test_it_pageexists(self):
@@ -104,6 +107,7 @@ class AddPageTests(BaseTest):
         request = testing.DummyRequest({'form.submitted': True,
                                         'body': 'Hello yo!'},
                                        dbsession=self.session)
+
         request.user = self.makeUser('foo', 'editor')
         request.context = NewPage('AnotherPage')
         self._callFUT(request)
@@ -166,3 +170,19 @@ class EditPageTests(BaseTest):
         response = self._callFUT(request)
         self.assertEqual(response.location, 'http://example.com/abc')
         self.assertEqual(page.data, 'Hello yo!')
+
+class TestAuthenticationPolicy(BaseTest):
+    def setUp(self):
+        super(TestAuthenticationPolicy, self).setUp()
+        from ..security import includeme
+        includeme(self.config)
+
+    def test_authenticated_userid_method(self):
+        user = self.makeUser('demo', 'role')
+        user.id = 1
+        request = testing.DummyRequest({'form.submitted': True,
+                                        'body': 'Hello yo!'},
+                                       dbsession=self.session)
+
+        request.user = user
+        self.assertEqual(request.authenticated_userid, 1)
